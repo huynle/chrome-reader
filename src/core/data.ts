@@ -10,6 +10,7 @@ export interface Data {
   mdPlugins?: typeof MD_PLUGINS
   pageTheme?: typeof PAGE_THEMES[0]
   hiddenSide?: boolean
+  hideDotFiles?: boolean
 }
 
 export function getDefaultData(mergeData: Data = {}): Data {
@@ -18,6 +19,7 @@ export function getDefaultData(mergeData: Data = {}): Data {
     refresh: false,
     centered: true,
     hiddenSide: false,
+    hideDotFiles: false,
     language: i18n().locale,
     mdPlugins: [...MD_PLUGINS],
     pageTheme: PAGE_THEMES[0],

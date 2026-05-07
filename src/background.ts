@@ -21,6 +21,9 @@ async function messageHandler(
     case 'fetch':
       fetchData(sender.url).then(callback)
       break
+    case 'directory':
+      fetchData(data?.url).then(callback)
+      break
   }
 }
 
@@ -51,6 +54,7 @@ const actionMap = {
   mdPlugins: 'updateMdPlugins',
   pageTheme: 'updatePageTheme',
   hiddenSide: 'toggleSide',
+  hideDotFiles: 'updateFileTreeOptions',
 }
 
 function updatePage(key: keyof typeof actionMap, value?: any) {

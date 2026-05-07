@@ -9,6 +9,12 @@ import type { Theme } from '@/config/page-themes'
 import { getDefaultData, type Data } from '@/core/data'
 import { mdRender, type MdOptions } from '@/core/markdown'
 import {
+  getFileName,
+  getParentDirectoryURL,
+  parseDirectoryListing,
+  type FileTreeEntry,
+} from '@/core/file-tree'
+import {
   getHeads,
   getRawContainer,
   setTheme,
@@ -65,6 +71,11 @@ function main(data: Data) {
     updatePageTheme(theme: Theme, prevTheme: Theme) {
       setTheme(theme)
       renderContentByTheme(theme, prevTheme)
+      updateOptionsMenuState()
+    },
+    updateFileTreeOptions() {
+      fileTreeRootURL && renderFileTree(fileTreeRootURL)
+      updateOptionsMenuState()
     },
     toggleRefresh(value) {
       clearTimeout(pollingTimer)
@@ -181,6 +192,20 @@ function main(data: Data) {
 
   /* render side */
   const mdSide = new Ele<HTMLElement>('ul', { className: className.MD_SIDE })
+  const sideSwitch = new Ele<HTMLElement>('li', {
+    className: 'md-reader__side-switch',
+  })
+  const fileTree = new Ele<HTMLElement>('li', {
+    className: 'md-reader__side-file-tree',
+  })
+  const tocTree = new Ele<HTMLElement>('li', {
+    className: 'md-reader__side-toc',
+  })
+  const tocList = new Ele<HTMLElement>('ul', {
+    className: 'md-reader__toc-list',
+  })
+  const fileTreeRootURL = getParentDirectoryURL(window.location.href)
+  let sideMode: 'files' | 'toc' = fileTreeRootURL ? 'files' : 'toc'
   let idCache: { [content: string]: number } = Object.create(null)
   let headElements: HTMLElement[] = []
   let sideLiElements: HTMLElement[] = []
@@ -193,6 +218,11 @@ function main(data: Data) {
     isSideHover = false
   })
 
+  renderSideSwitch()
+  tocTree.append(tocList)
+  if (fileTreeRootURL) {
+    renderFileTree(fileTreeRootURL)
+  }
   renderSide()
   document.addEventListener('scroll', throttle(onScroll, 100))
 
@@ -270,10 +300,29 @@ function main(data: Data) {
   goTopBtn.hide()
   goTopBtn.on('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }))
 
+  const optionsBtn = new Ele<HTMLElement>('button', {
+    className: [className.MD_BUTTON, 'md-reader__btn--options'],
+    title: 'Options',
+  })
+  optionsBtn.innerHTML = '<span></span><span></span><span></span>'
+
+  const optionsMenu = new Ele<HTMLElement>('div', {
+    className: 'md-reader__options-menu',
+  })
+  renderOptionsMenu()
+  optionsBtn.on('click', e => {
+    e.stopPropagation()
+    optionsMenu.classList.toggle('opened')
+  })
+  optionsMenu.on('click', e => e.stopPropagation())
+  document.addEventListener('click', () => {
+    optionsMenu.classList.remove('opened')
+  })
+
   const buttonWrap = new Ele<HTMLElement>(
     'div',
     { className: className.BUTTON_WRAP_ELE },
-    [sideExpandBtn, rawToggleBtn, goTopBtn],
+    [sideExpandBtn, rawToggleBtn, optionsBtn, optionsMenu, goTopBtn],
   )
 
   /* mount elements */
@@ -325,8 +374,179 @@ function main(data: Data) {
     df = new Ele<DocumentFragment>('#document-fragment')
     sideLiElements = headElements.reduce(handleHeadItem, [])
     mdSide.innerHTML = null
-    mdSide.append(df)
+    mdSide.append(sideSwitch)
+    fileTreeRootURL && mdSide.append(fileTree)
+    mdSide.append(tocTree)
+    tocList.innerHTML = ''
+    tocList.append(df)
+    updateSideMode(sideMode)
     setTimeout(onScroll, 0)
+  }
+
+  function renderSideSwitch() {
+    sideSwitch.innerHTML = ''
+    const switcher = document.createElement('div')
+    switcher.className = 'md-reader__side-switch-control'
+
+    const filesButton = createSideSwitchButton('files', 'Files')
+    const tocButton = createSideSwitchButton('toc', 'TOC')
+    switcher.append(filesButton, tocButton)
+    sideSwitch.append(switcher)
+  }
+
+  function createSideSwitchButton(mode: 'files' | 'toc', label: string) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.dataset.mode = mode
+    button.textContent = label
+    button.disabled = mode === 'files' && !fileTreeRootURL
+    button.addEventListener('click', () => updateSideMode(mode))
+    return button
+  }
+
+  function updateSideMode(mode: 'files' | 'toc') {
+    sideMode = mode === 'files' && !fileTreeRootURL ? 'toc' : mode
+    fileTree.classList.toggle('active', sideMode === 'files')
+    tocTree.classList.toggle('active', sideMode === 'toc')
+    sideSwitch
+      .queryAll('button')
+      .forEach(button =>
+        button.classList.toggle('active', button.dataset.mode === sideMode),
+      )
+  }
+
+  function renderFileTree(rootURL: string) {
+    fileTree.innerHTML = ''
+    const title = document.createElement('div')
+    title.className = 'md-reader__file-tree-title'
+    title.textContent = getFileName(rootURL) || 'Files'
+
+    const list = document.createElement('ul')
+    list.className = 'md-reader__file-tree-list'
+    fileTree.append([title, list])
+    loadFileTreeDirectory(rootURL, list)
+  }
+
+  function loadFileTreeDirectory(directoryURL: string, list: HTMLElement) {
+    list.textContent = 'Loading...'
+    chrome.runtime.sendMessage(
+      { action: 'directory', data: { url: directoryURL } },
+      (html: string) => {
+        if (!html || chrome.runtime.lastError) {
+          list.textContent = 'Unable to load files'
+          return
+        }
+
+        const entries = parseDirectoryListing(html, directoryURL).filter(
+          entry => !configData.hideDotFiles || !isDotEntry(entry),
+        )
+        list.innerHTML = ''
+        if (!entries.length) {
+          list.textContent = 'No markdown files'
+          return
+        }
+
+        entries.forEach(entry => list.appendChild(renderFileTreeEntry(entry)))
+      },
+    )
+  }
+
+  function renderFileTreeEntry(entry: FileTreeEntry): HTMLElement {
+    const item = document.createElement('li')
+    item.className = `md-reader__file-tree-item md-reader__file-tree-item--${entry.type}`
+
+    if (entry.type === 'directory') {
+      const button = document.createElement('button')
+      const childList = document.createElement('ul')
+      childList.className = 'md-reader__file-tree-list'
+      childList.hidden = true
+
+      button.type = 'button'
+      button.innerHTML = `<span class="md-reader__file-tree-caret">▸</span><span class="md-reader__file-tree-icon">□</span><span class="md-reader__file-tree-name"></span>`
+      button.querySelector('.md-reader__file-tree-name').textContent =
+        entry.name
+      button.addEventListener('click', () => {
+        const expanded = item.classList.toggle('expanded')
+        childList.hidden = !expanded
+        if (expanded && !childList.dataset.loaded) {
+          childList.dataset.loaded = 'true'
+          loadFileTreeDirectory(entry.url, childList)
+        }
+      })
+
+      item.append(button, childList)
+      return item
+    }
+
+    const link = document.createElement('a')
+    link.href = entry.url
+    link.innerHTML = `<span class="md-reader__file-tree-spacer"></span><span class="md-reader__file-tree-icon">M</span><span class="md-reader__file-tree-name"></span>`
+    link.querySelector('.md-reader__file-tree-name').textContent = entry.name
+    if (entry.url === window.location.href) {
+      item.classList.add('active')
+    }
+    item.appendChild(link)
+    return item
+  }
+
+  function isDotEntry(entry: FileTreeEntry): boolean {
+    return entry.name.startsWith('.')
+  }
+
+  function renderOptionsMenu() {
+    optionsMenu.innerHTML = `
+      <div class="md-reader__options-title">Options</div>
+      <label class="md-reader__options-row">
+        <span>
+          <strong>Hide dotfiles</strong>
+          <small>Hide files and folders starting with a dot.</small>
+        </span>
+        <input type="checkbox" data-option="hideDotFiles" />
+      </label>
+      <div class="md-reader__options-group">
+        <div class="md-reader__options-label">Theme</div>
+        <div class="md-reader__options-theme">
+          <button type="button" data-theme="light">Light</button>
+          <button type="button" data-theme="dark">Dark</button>
+          <button type="button" data-theme="auto">Auto</button>
+        </div>
+      </div>
+    `
+
+    const hideDotFiles = optionsMenu.query(
+      '[data-option="hideDotFiles"]',
+    ) as HTMLInputElement
+    hideDotFiles.addEventListener('change', () => {
+      saveConfig('hideDotFiles', hideDotFiles.checked)
+    })
+
+    optionsMenu.queryAll('[data-theme]').forEach(button => {
+      button.addEventListener('click', () => {
+        saveConfig('pageTheme', button.dataset.theme as Theme)
+      })
+    })
+
+    updateOptionsMenuState()
+  }
+
+  function updateOptionsMenuState() {
+    const hideDotFiles = optionsMenu.query(
+      '[data-option="hideDotFiles"]',
+    ) as HTMLInputElement
+    if (hideDotFiles) {
+      hideDotFiles.checked = !!configData.hideDotFiles
+    }
+
+    optionsMenu.queryAll('[data-theme]').forEach(button => {
+      button.classList.toggle(
+        'active',
+        button.dataset.theme === configData.pageTheme,
+      )
+    })
+  }
+
+  function saveConfig(key: keyof Data, value: Data[keyof Data]) {
+    chrome.runtime.sendMessage({ action: 'storage', data: { key, value } })
   }
 
   function handleHeadItem(
