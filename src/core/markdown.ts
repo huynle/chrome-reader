@@ -31,7 +31,7 @@ const PLUGINS: Plugins = {
   Katex: [mKatex],
   Mermaid: ({ theme }) => [
     mMermaid,
-    { theme: theme === 'dark' ? 'dark' : 'default', themeVariables: undefined },
+    { theme: theme === 'dark' ? 'dark' : 'default' },
   ],
   Mark: [mMark],
   Deflist: [mDeflist],
@@ -47,7 +47,8 @@ export interface MdOptions {
   plugins?: Array<string>
 }
 
-function initRender({ config = {}, plugins = [...MD_PLUGINS] }: MdOptions) {
+function initRender(options: MdOptions) {
+  const { config = {}, plugins = [...MD_PLUGINS] } = options
   const copyButton = new Ele<HTMLElement>(
     'button',
     {
@@ -92,7 +93,7 @@ function initRender({ config = {}, plugins = [...MD_PLUGINS] }: MdOptions) {
   plugins.forEach(name => {
     let plugin = PLUGINS[name]
     if (typeof plugin === 'function') {
-      plugin = plugin(arguments[0])
+      plugin = plugin(options)
     }
     plugin && md.use(plugin[0], ...plugin.slice(1))
   })

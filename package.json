@@ -26,7 +26,8 @@
     "build:zip": "node ./scripts/zip.mjs",
     "lint": "prettier --write --ignore-unknown",
     "preinstall": "node ./scripts/preinstall.mjs",
-    "prepare": "husky install"
+    "prepare": "husky install",
+    "postinstall": "node ./scripts/patch-katex.js"
   },
   "devDependencies": {
     "@nuxt/friendly-errors-webpack-plugin": "^2.5.2",
@@ -56,7 +57,7 @@
     "webpack-merge": "^5.8.0"
   },
   "dependencies": {
-    "@md-reader/markdown-it-mermaid": "^0.5.1",
+    "@md-reader/markdown-it-mermaid": "0.6.0-beta.0",
     "@md-reader/theme": "1.0.23-patch.1",
     "@mdit/plugin-alert": "^0.22.1",
     "@smui/button": "^4.2.0",

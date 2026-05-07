@@ -30,8 +30,8 @@
   "host_permissions": ["*://*/*"],
   "content_scripts": [
     {
-      "js": ["js/content.js"],
       "css": ["css/content.css"],
+      "js": ["js/mermaid.min.js", "js/content.js"],
       "matches": [
         "*://*/*.md",
         "*://*/*.mdx",

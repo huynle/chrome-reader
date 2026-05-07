@@ -24,6 +24,30 @@ import '@/style/index.less'
 
 function main(data: Data) {
   const configData = getDefaultData(data)
+
+  // Initialize mermaid globally before any rendering
+  if (configData.mdPlugins.includes('Mermaid')) {
+    // Wait for mermaid to load with retries
+    const initMermaid = (retries = 10) => {
+      if (typeof (window as any).mermaid !== 'undefined') {
+        const mermaid =
+          (window as any).mermaid.default || (window as any).mermaid
+        if (mermaid && typeof mermaid.initialize === 'function') {
+          mermaid.initialize({
+            startOnLoad: false,
+            theme: configData.pageTheme === 'dark' ? 'dark' : 'default',
+          })
+        }
+      } else if (retries > 0) {
+        // Retry after 50ms if mermaid not loaded yet
+        setTimeout(() => initMermaid(retries - 1), 50)
+      } else {
+        console.warn('Mermaid library failed to load')
+      }
+    }
+    initMermaid()
+  }
+
   const actions = {
     reload() {
       window.location.reload()
@@ -97,6 +121,46 @@ function main(data: Data) {
         plugins: configData.mdPlugins,
         ...options,
       })
+      // Initialize mermaid diagrams after rendering
+      if (configData.mdPlugins.includes('Mermaid')) {
+        const renderMermaid = (retries = 20) => {
+          const targetEl =
+            target instanceof HTMLElement ? target : (target as Ele).ele
+          if (targetEl) {
+            const mermaidElements = targetEl.querySelectorAll('.mermaid')
+            if (mermaidElements.length > 0) {
+              if (typeof (window as any).mermaid !== 'undefined') {
+                // Check if mermaid is exported as default
+                const mermaid =
+                  (window as any).mermaid.default || (window as any).mermaid
+                if (mermaid && typeof mermaid.run === 'function') {
+                  mermaid
+                    .run({
+                      nodes: mermaidElements,
+                    })
+                    .catch((err: Error) => {
+                      console.error('Mermaid rendering error:', err)
+                    })
+                } else if (mermaid && typeof mermaid.init === 'function') {
+                  // Fallback to old API
+                  mermaid.init(undefined, mermaidElements)
+                } else if (retries > 0) {
+                  // Retry if mermaid not ready
+                  setTimeout(() => renderMermaid(retries - 1), 50)
+                } else {
+                  console.error('Mermaid: Neither run() nor init() available')
+                }
+              } else if (retries > 0) {
+                // Retry if mermaid not loaded yet
+                setTimeout(() => renderMermaid(retries - 1), 50)
+              } else {
+                console.warn('Mermaid library not loaded after 1 second')
+              }
+            }
+          }
+        }
+        setTimeout(() => renderMermaid(), 100)
+      }
     }
   const contentRender = mdRenderer(mdContent)
   contentRender(mdRaw)

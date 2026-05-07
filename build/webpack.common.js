@@ -93,6 +93,13 @@ module.exports = {
           from: resolve(__dirname, '../src/popup/index.html'),
           to: 'popup.html',
         },
+        {
+          from: resolve(
+            __dirname,
+            '../node_modules/.pnpm/mermaid@11.14.0/node_modules/mermaid/dist/mermaid.min.js',
+          ),
+          to: 'js/mermaid.min.js',
+        },
       ],
     }),
   ],
